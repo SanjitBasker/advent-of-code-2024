@@ -19,5 +19,5 @@ if __name__ == "__main__":
             p.write_bytes(b)
 
     check_call(
-        shlex.split(f"code-insiders -r {(' '.join(p.as_posix() for p in paths[::-1]))}")
+        shlex.split(f"code-insiders -r {(' '.join(p.as_posix() for p in paths))}")
     )
