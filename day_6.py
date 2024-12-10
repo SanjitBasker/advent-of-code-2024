@@ -1,4 +1,5 @@
 import sys
+from contextlib import contextmanager
 
 
 def parse(lines):
@@ -78,27 +79,28 @@ def part2(traversable, start):
         loop = False
     return loop
 
+  @contextmanager
+  def temp_obstacle(i, j):
+    traversable[i][j] = False
+    yield
+    traversable[i][j] = True
+
   steps = []
   assert continue_simulation(start, (-1, 0), steps) is False
 
   ans = set()
   seen = set((start,))
-  # for each subsequence consisting of the first i steps, determine if an
-  # obstacle can be used to repeat one of those steps
+  # only put obstacles in places we go
   for i in range(len(steps) - 1):
     next_pos = steps[i + 1][0]  # propose putting an obstacle here
     if next_pos in seen:
       continue
     else:
       seen.add(next_pos)
-    traversable[next_pos[0]][next_pos[1]] = False
-    temp = steps[:i]
-    if continue_simulation(*steps[i], temp):
-      ans.add(next_pos)
-    traversable[next_pos[0]][next_pos[1]] = True
-  # for i, j in ans:
-  #   traversable[i][j] = True
-  #   assert continue_simulation(start, (-1, 0), [])
+    with temp_obstacle(*next_pos):
+      temp = steps[:i]
+      if continue_simulation(*steps[i], temp):
+        ans.add(next_pos)
   return len(ans)
 
 
