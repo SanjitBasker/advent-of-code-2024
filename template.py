@@ -14,4 +14,4 @@ def part2():
 
 
 if __name__ == "__main__":
-    print(part2(*parse(sys.stdin)))
+    print(part1(*parse(sys.stdin)))

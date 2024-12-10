@@ -10,6 +10,10 @@ if __name__ == "__main__":
         Path(__file__).parent / "data" / f"input_{suffix}_small.txt",
         Path(__file__).parent / "data" / f"input_{suffix}_large.txt",
     ]
+    if len(sys.argv) > 2:
+        paths.append(
+            Path(__file__).parent / "data" / f"input_{suffix}_small_2.txt",
+        )
     byteses = [(Path(__file__).parent / "template.py").read_bytes(), bytes(), bytes()]
 
     for p, b in zip(paths, byteses):
