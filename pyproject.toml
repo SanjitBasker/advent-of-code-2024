@@ -1,0 +1,5 @@
+[tool.ruff]
+indent-width = 2
+select = ["E", "F", "Q", "I"]
+fixable = ["ALL"]
+line-length = 80
