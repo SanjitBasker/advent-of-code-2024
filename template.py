@@ -2,16 +2,16 @@ import sys
 
 
 def parse(lines):
-    return ()
+  return ()
 
 
 def part1():
-    return 0
+  return 0
 
 
 def part2():
-    return ()
+  return ()
 
 
 if __name__ == "__main__":
-    print(part1(*parse(sys.stdin)))
+  print(part1(*parse(sys.stdin)))
