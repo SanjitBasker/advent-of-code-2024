@@ -93,7 +93,7 @@ def part2(traversable, start):
   # only put obstacles in places we go
   for i in range(len(steps) - 1):
     next_pos = steps[i + 1][0]  # propose putting an obstacle here
-    if next_pos in seen:
+    if next_pos in seen or next_pos in ans:
       continue
     else:
       seen.add(next_pos)
