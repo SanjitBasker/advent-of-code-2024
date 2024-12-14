@@ -1,6 +1,8 @@
-from typing import List, Tuple
+from typing import List, Tuple, Generator
 
 import sys
+from dataclasses import dataclass
+from itertools import chain
 
 
 def parse(lines):
@@ -99,9 +101,103 @@ def part1(blocks: List[Tuple[int | None, int]]):
   return cs
 
 
+@dataclass
+class UpdatableBlock:
+  block: Tuple[int, int]  # offset, len
+  updates: List["UpdatableBlock"]  # must use these instead if available
+
+
+def find_blocks(
+  l: List[UpdatableBlock], min_length: int = 0, stop_loc: int = 10**5
+) -> Generator[UpdatableBlock]:
+  for b in l:
+    if b.block[0] > stop_loc:
+      return
+    elif b.updates:
+      for bb in find_blocks(b.updates):
+        yield bb
+    elif b.block[1] >= min_length:
+      yield b
+
+
+def collapse(blocks: List[Tuple[int | None, int]]):
+  out = []
+  for b in blocks:
+    if b[1] == 0:
+      continue
+    elif out and out[-1][0] == b[0]:
+      out[-1][1] += b[1]
+    else:
+      out.append(b)
+  return out
+
+
 def part2(blocks: List[Tuple[int | None, int]]):
-  return None
+  print(blocks)
+  blocks = collapse(blocks)
+  print(blocks)
+  empties: List[UpdatableBlock] = []
+  fulls: List[Tuple[int, int, int]] = []  # id, source start, len
+  total = 0
+  for b in blocks:
+    if b[0] is None:
+      empties.append(UpdatableBlock((total, b[1]), []))
+    else:
+      fulls.append((b[0], total, b[1]))
+    total += b[1]
+  print(empties)
+  print(fulls)
+  spots = [find_blocks(empties, i) for i in range(1, 10)]
+  destinations = []  # id, destination start, len
+  for f in fulls[::-1]:
+    f_id, f_start, f_len = f
+    print(spots[f_len - 1])
+    insertion_pt = next(spots[f_len - 1] or [None], None)
+    if insertion_pt is not None:
+      insertion_start, insertion_avail = insertion_pt.block
+      if insertion_start >= f_start:
+        destinations.append((f_id, f_start, f_len))
+        spots[f_len - 1] = []
+        continue
+      assert insertion_start <= f_start
+      assert insertion_avail >= f_len
+      insertion_pt.updates.append(
+        UpdatableBlock((insertion_start + f_len, insertion_avail - f_len), [])
+      )
+      destinations.append((f_id, insertion_start, f_len))
+
+      # for i, it in enumerate(spots):
+      #   if (spot := next(it, None)) is not None:
+      #     spot_start, spot_avail = spot.block
+      #     if insertion_start <= spot_start < insertion_start + f_len:
+      #       if f_len + (i + 1) <= insertion_avail:
+      #         spots[i] = chain(
+      #           [
+      #             UpdatableBlock(
+      #               (
+      #                 insertion_start + f_len,
+      #                 insertion_avail - f_len,
+      #               ),
+      #               [],
+      #             )
+      #           ],
+      #           it,
+      #         )
+      #       else:
+      #         # we discarded it for them
+      #         pass
+      #     else:
+      #       # full rollback
+      #       spots[i] = chain([spot], it)
+    else:
+      destinations.append((f_id, f_start, f_len))
+  ans = 0
+  for d_id, d_start, d_len in destinations:
+    for _ in range(d_len):
+      ans += d_id * d_start
+      d_start += 1
+  return ans
 
 
 if __name__ == "__main__":
-  print(part1(*parse(sys.stdin)))
+  print(part2(*parse(sys.stdin)))
