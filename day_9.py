@@ -3,6 +3,7 @@ from typing import List, Tuple, Generator
 import sys
 from dataclasses import dataclass
 from itertools import chain
+from pprint import pprint
 
 
 def parse(lines):
@@ -89,8 +90,6 @@ def part1(blocks: List[Tuple[int | None, int]]):
   ):
     compacted.append((blocks[left][0], r))
 
-  print(compacted)
-
   cs = 0
   blocks = 0
   for group in compacted:
@@ -108,16 +107,15 @@ class UpdatableBlock:
 
 
 def find_blocks(
-  l: List[UpdatableBlock], min_length: int = 0, stop_loc: int = 10**5
+  l: List[UpdatableBlock], min_length: int = 0
 ) -> Generator[UpdatableBlock]:
   for b in l:
-    if b.block[0] > stop_loc:
-      return
-    elif b.updates:
-      for bb in find_blocks(b.updates):
-        yield bb
+    if b.updates:
+      yield from find_blocks(b.updates, min_length)
     elif b.block[1] >= min_length:
       yield b
+      if b.updates:
+        yield from find_blocks(b.updates, min_length)
 
 
 def collapse(blocks: List[Tuple[int | None, int]]):
@@ -133,9 +131,7 @@ def collapse(blocks: List[Tuple[int | None, int]]):
 
 
 def part2(blocks: List[Tuple[int | None, int]]):
-  print(blocks)
   blocks = collapse(blocks)
-  print(blocks)
   empties: List[UpdatableBlock] = []
   fulls: List[Tuple[int, int, int]] = []  # id, source start, len
   total = 0
@@ -145,50 +141,21 @@ def part2(blocks: List[Tuple[int | None, int]]):
     else:
       fulls.append((b[0], total, b[1]))
     total += b[1]
-  print(empties)
-  print(fulls)
   spots = [find_blocks(empties, i) for i in range(1, 10)]
   destinations = []  # id, destination start, len
   for f in fulls[::-1]:
     f_id, f_start, f_len = f
-    print(spots[f_len - 1])
     insertion_pt = next(spots[f_len - 1] or [None], None)
     if insertion_pt is not None:
       insertion_start, insertion_avail = insertion_pt.block
       if insertion_start >= f_start:
         destinations.append((f_id, f_start, f_len))
-        spots[f_len - 1] = []
         continue
-      assert insertion_start <= f_start
-      assert insertion_avail >= f_len
+      insertion_pt.block = (0, 0)
       insertion_pt.updates.append(
         UpdatableBlock((insertion_start + f_len, insertion_avail - f_len), [])
       )
       destinations.append((f_id, insertion_start, f_len))
-
-      # for i, it in enumerate(spots):
-      #   if (spot := next(it, None)) is not None:
-      #     spot_start, spot_avail = spot.block
-      #     if insertion_start <= spot_start < insertion_start + f_len:
-      #       if f_len + (i + 1) <= insertion_avail:
-      #         spots[i] = chain(
-      #           [
-      #             UpdatableBlock(
-      #               (
-      #                 insertion_start + f_len,
-      #                 insertion_avail - f_len,
-      #               ),
-      #               [],
-      #             )
-      #           ],
-      #           it,
-      #         )
-      #       else:
-      #         # we discarded it for them
-      #         pass
-      #     else:
-      #       # full rollback
-      #       spots[i] = chain([spot], it)
     else:
       destinations.append((f_id, f_start, f_len))
   ans = 0
