@@ -103,19 +103,14 @@ def part1(blocks: List[Tuple[int | None, int]]):
 @dataclass
 class UpdatableBlock:
   block: Tuple[int, int]  # offset, len
-  updates: List["UpdatableBlock"]  # must use these instead if available
 
 
 def find_blocks(
   l: List[UpdatableBlock], min_length: int = 0
 ) -> Generator[UpdatableBlock]:
   for b in l:
-    if b.updates:
-      yield from find_blocks(b.updates, min_length)
-    elif b.block[1] >= min_length:
+    while b.block[1] >= min_length:
       yield b
-      if b.updates:
-        yield from find_blocks(b.updates, min_length)
 
 
 def collapse(blocks: List[Tuple[int | None, int]]):
@@ -137,24 +132,21 @@ def part2(blocks: List[Tuple[int | None, int]]):
   total = 0
   for b in blocks:
     if b[0] is None:
-      empties.append(UpdatableBlock((total, b[1]), []))
+      empties.append(UpdatableBlock((total, b[1])))
     else:
       fulls.append((b[0], total, b[1]))
     total += b[1]
-  spots = [find_blocks(empties, i) for i in range(1, 10)]
+  spots = [find_blocks(empties, i) for i in range(10)]
   destinations = []  # id, destination start, len
   for f in fulls[::-1]:
     f_id, f_start, f_len = f
-    insertion_pt = next(spots[f_len - 1] or [None], None)
+    insertion_pt = next(spots[f_len] or [None], None)
     if insertion_pt is not None:
       insertion_start, insertion_avail = insertion_pt.block
       if insertion_start >= f_start:
         destinations.append((f_id, f_start, f_len))
         continue
-      insertion_pt.block = (0, 0)
-      insertion_pt.updates.append(
-        UpdatableBlock((insertion_start + f_len, insertion_avail - f_len), [])
-      )
+      insertion_pt.block = (insertion_start + f_len, insertion_avail - f_len)
       destinations.append((f_id, insertion_start, f_len))
     else:
       destinations.append((f_id, f_start, f_len))
