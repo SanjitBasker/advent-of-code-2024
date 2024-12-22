@@ -6,6 +6,7 @@ from functools import total_ordering
 from typing import Iterable, List, Literal, Tuple, Optional
 
 from sortedcontainers import SortedDict
+from tqdm import tqdm
 
 
 @total_ordering
@@ -61,6 +62,37 @@ def parse(lines):
     else:
       break
   return grid, start, actions
+
+
+def make_rows_cols(
+  grid: List[List[Space]],
+) -> Tuple[List[TheOnlyUsefulType], List[TheOnlyUsefulType]]:
+  rows: List[TheOnlyUsefulType] = []
+  for i in range(len(grid)):
+    sd: TheOnlyUsefulType = SortedDict()
+    item = None
+    for j in range(len(grid[i])):
+      if item is None:
+        item = (j, grid[i][j])
+      elif grid[i][j] != item[1]:
+        sd[item[0]] = (item[1], j)
+        item = (j, grid[i][j])
+    sd[item[0]] = (item[1], len(grid[i]))
+    rows.append(sd)
+
+  cols: List[TheOnlyUsefulType] = []
+  for j in range(len(grid[0])):
+    sd: TheOnlyUsefulType = SortedDict()
+    item = None
+    for i in range(len(grid)):
+      if item is None:
+        item = (i, grid[i][j])
+      elif grid[i][j] != item[1]:
+        sd[item[0]] = (item[1], i)
+        item = (i, grid[i][j])
+    sd[item[0]] = (item[1], len(grid))
+    cols.append(sd)
+  return (rows, cols)
 
 
 def gen_max(y: int):
@@ -152,6 +184,47 @@ def replace(
     sd[i + 1] = (present, finish)
 
 
+def push_row_of_boxes(sd: TheOnlyUsefulType, j: int, direction: Literal[-1, 1]):
+  """
+  Does what it says on the tin, i'm too lazy to ask gen AI to write a docstring
+  """
+  items = sd.items()
+  start, (present, finish) = items[j]
+  assert present == Space.BOX and 0 < j < len(items) - 1
+  squash_item = items[j + direction]
+  expand_item = items[j - direction]
+  assert squash_item[1][0] == Space.FREE
+  if direction == -1:
+    del sd[start]
+    del sd[squash_item[0]]
+    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
+      prior_item := items[j - 2]
+    )[1][0] == Space.BOX:
+      sd[prior_item[0]] = (present, finish - 1)
+    elif kill_squash:
+      sd[start - 1] = (Space.BOX, finish - 1)
+    else:
+      sd[squash_item[0]] = (Space.FREE, start - 1)
+      sd[start - 1] = (Space.BOX, finish - 1)
+    del sd[expand_item[0]]
+    sd[expand_item[0] - 1] = expand_item[1]
+  else:
+    del sd[start]
+    del sd[squash_item[0]]
+    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
+      following_item := items[j]
+    )[1][0] == Space.BOX:
+      # merge with following
+      sd[start + 1] = following_item[1]
+      del sd[following_item[0]]
+    elif kill_squash:
+      sd[start + 1] = (Space.BOX, finish + 1)
+    else:
+      sd[start + 1] = (Space.BOX, finish + 1)
+      sd[finish + 1] = squash_item[1]
+    sd[expand_item[0]] = (expand_item[1][0], start + 1)
+
+
 def move(u: Tuple[int, int], v: Tuple[int, int]) -> Tuple[int, int]:
   return tuple(x + y for x, y in zip(u, v))
 
@@ -175,35 +248,16 @@ def pprint(
   return "\n".join(row_chars), "\n".join(transposed_cols)
 
 
-def make_rows_cols(
-  grid: List[List[Space]],
-) -> Tuple[List[TheOnlyUsefulType], List[TheOnlyUsefulType]]:
-  rows: List[TheOnlyUsefulType] = []
-  for i in range(len(grid)):
-    sd: TheOnlyUsefulType = SortedDict()
-    item = None
-    for j in range(len(grid[i])):
-      if item is None:
-        item = (j, grid[i][j])
-      elif grid[i][j] != item[1]:
-        sd[item[0]] = (item[1], j)
-        item = (j, grid[i][j])
-    sd[item[0]] = (item[1], len(grid[i]))
-    rows.append(sd)
-
-  cols: List[TheOnlyUsefulType] = []
-  for j in range(len(grid[0])):
-    sd: TheOnlyUsefulType = SortedDict()
-    item = None
-    for i in range(len(grid)):
-      if item is None:
-        item = (i, grid[i][j])
-      elif grid[i][j] != item[1]:
-        sd[item[0]] = (item[1], i)
-        item = (i, grid[i][j])
-    sd[item[0]] = (item[1], len(grid))
-    cols.append(sd)
-  return (rows, cols)
+def gps(rows: List[TheOnlyUsefulType]):
+  ans = 0
+  for i, row in enumerate(rows):
+    for item in row.items():
+      if item[1][0] == Space.BOX:
+        ans += (
+          100 * i * (item[1][1] - item[0])
+          + (item[0] + item[1][1] - 1) * (item[1][1] - item[0]) // 2
+        )
+  return ans
 
 
 def part1(
@@ -248,74 +302,22 @@ def part1(
           replace(to_replace[box_dest_coord], x, Space.BOX, Space.FREE)
           pos = move(pos, a.value)
 
-  ans = 0
-  for i, row in enumerate(rows):
-    for item in row.items():
-      if item[1][0] == Space.BOX:
-        ans += (
-          100 * i * (item[1][1] - item[0])
-          + (item[0] + item[1][1] - 1) * (item[1][1] - item[0]) // 2
-        )
-  return ans
-
-
-def push_row_of_boxes(sd: TheOnlyUsefulType, j: int, direction: Literal[-1, 1]):
-  """
-  Does what it says on the tin, i'm too lazy to ask gen AI to write a docstring
-  """
-  items = sd.items()
-  start, (present, finish) = items[j]
-  assert present == Space.BOX and 0 < j < len(items) - 1
-  squash_item = items[j + direction]
-  expand_item = items[j - direction]
-  assert squash_item[1][0] == Space.FREE
-  if direction == -1:
-    del sd[start]
-    del sd[squash_item[0]]
-    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
-      prior_item := items[j - 2]
-    )[1][0] == Space.BOX:
-      sd[prior_item[0]] = (present, finish - 1)
-    elif kill_squash:
-      sd[start - 1] = (Space.BOX, finish - 1)
-    else:
-      sd[squash_item[0]] = (Space.FREE, start - 1)
-      sd[start - 1] = (Space.BOX, finish - 1)
-    del sd[expand_item[0]]
-    sd[expand_item[0] - 1] = expand_item[1]
-  else:
-    del sd[start]
-    del sd[squash_item[0]]
-    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
-      following_item := items[j]
-    )[1][0] == Space.BOX:
-      # merge with following
-      sd[start + 1] = following_item[1]
-      del sd[following_item[0]]
-    elif kill_squash:
-      sd[start + 1] = (Space.BOX, finish + 1)
-    else:
-      sd[start + 1] = (Space.BOX, finish + 1)
-      sd[finish + 1] = squash_item[1]
-    sd[expand_item[0]] = (expand_item[1][0], start + 1)
-
-
-@dataclass(frozen=False)
-class MovingBox:
-  coords: Tuple[int, int]
+  return gps(rows)
 
 
 def vertical_obstacles(
   rows: List[TheOnlyUsefulType], box: Tuple[int, int], direction: Literal[-1, 1]
-) -> Optional[List[MovingBox]]:
+) -> Optional[List[Tuple[int, int]]]:
   row, col = box
   if 0 <= (row + direction) < len(rows):
     next_row = rows[row + direction]
     items = next_row.items()
-    start, (space, finish) = items[bisect_right(items, gen_max(col)) - 1]
+    start, (space, finish) = items[
+      temp := bisect_right(items, gen_max(col)) - 1
+    ]
     assert start <= col < finish
-    if finish == start + 1:
-      space2 = rows[row + direction][start + 1][0]
+    if finish == col + 1:
+      _, (space2, _) = items[temp + 1]
     else:
       space2 = space
     match (space, space2):
@@ -342,11 +344,20 @@ def vertical_obstacles(
 
 def compute_vertical_moves(
   rows: List[TheOnlyUsefulType],
-  original_box: Tuple[int, int],
+  move_pos: Tuple[int, int],
   direction: Literal[-1, 1],
 ) -> List[Tuple[int, int]]:
   ans = []
-  ans.append(original_box)
+  row, col = move_pos
+  item_start, (item_space, _) = (items := rows[row].items())[
+    bisect_right(items, gen_max(col)) - 1
+  ]
+  assert item_space == Space.BOX
+  if (col - item_start) % 2 == 0:
+    ans.append((row, col))
+  else:
+    ans.append((row, col - 1))
+
   finished = 0
   while finished < len(ans):
     box = ans[finished]
@@ -361,9 +372,100 @@ def compute_vertical_moves(
   return ans
 
 
-def part2():
-  return ()
+def double_rows_cols(
+  rows: List[TheOnlyUsefulType], cols: List[TheOnlyUsefulType]
+):
+  new_rows = [
+    SortedDict(
+      (2 * start, (space, 2 * fin)) for (start, (space, fin)) in row.items()
+    )
+    for row in rows
+  ]
+  new_cols: List[TheOnlyUsefulType] = []
+  for col in cols:
+    for _ in range(2):
+      new_cols.append(SortedDict(col.items()))
+  return new_rows, new_cols
+
+
+def gps2(double_rows: List[TheOnlyUsefulType]):
+  ans = 0
+  for i, row in enumerate(double_rows):
+    for item in row.items():
+      if item[1][0] == Space.BOX:
+        ans += (
+          100 * i * (item[1][1] - item[0]) // 2
+          + (item[0] + item[1][1] - 2) * (item[1][1] - item[0]) // 4
+        )
+  return ans
+
+
+def part2(
+  grid: List[List[Space]], start: Tuple[int, int], actions: Iterable[Direction]
+):
+  rows, cols = double_rows_cols(*make_rows_cols(grid))
+
+  pos = (start[0], start[1] * 2)
+  for a in tqdm(actions):
+    print("-" * 3 * len(cols))
+    s1, s2 = pprint(rows, cols, True)
+    print(s1)
+    print(pos)
+    assert s1.replace("[]", "OO") == s2
+
+    if a.value[0] == 0:
+      to_search = rows[pos[0]]
+      to_replace = cols
+      x, y = pos
+    else:
+      to_search = cols[pos[1]]
+      to_replace = rows
+      y, x = pos
+
+    neighbor = bisect_right(to_search.items(), gen_max(y + sum(a.value))) - 1
+    neighbor_item = to_search.items()[neighbor]
+    if neighbor_item[1][0] == Space.FREE:
+      pos = move(pos, a.value)
+    elif neighbor_item[1][0] == Space.BOX:
+      if 0 <= (following := neighbor + sum(a.value)) < len(to_search):
+        following_item = to_search.items()[following]
+        if following_item[1][0] == Space.FREE:
+          if sum(a.value) == 1:
+            box_dest_coord = neighbor_item[1][1]
+          elif sum(a.value) == -1:
+            box_dest_coord = neighbor_item[0] - 1
+          if a.value[1]:
+            push_row_of_boxes(to_search, neighbor, sum(a.value))
+            replace(to_replace[y + sum(a.value)], x, Space.FREE, Space.BOX)
+            replace(to_replace[box_dest_coord], x, Space.BOX, Space.FREE)
+            pos = move(pos, a.value)
+          else:
+            obstacles = compute_vertical_moves(
+              rows, move(pos, a.value), sum(a.value)
+            )
+            if obstacles:
+              # clear out
+              for i, j in obstacles:
+                replace(rows[i], j, Space.FREE, Space.BOX)
+                replace(rows[i], j + 1, Space.FREE, Space.BOX)
+                replace(cols[j], i, Space.FREE, Space.BOX)
+                replace(cols[j + 1], i, Space.FREE, Space.BOX)
+              # fill in
+              for i, j in obstacles:
+                replace(rows[i + sum(a.value)], j, Space.BOX, None)
+                replace(rows[i + sum(a.value)], j + 1, Space.BOX, None)
+                replace(cols[j], i + sum(a.value), Space.BOX, None)
+                replace(cols[j + 1], i + sum(a.value), Space.BOX, None)
+              pos = move(pos, a.value)
+            else:
+              pass
+  print("-" * 3 * len(cols))
+  s1, s2 = pprint(rows, cols, True)
+  print(s1)
+  print(pos)
+  assert s1.replace("[]", "OO") == s2
+  return gps2(rows)
 
 
 if __name__ == "__main__":
-  print(part1(*parse(sys.stdin)))
+  print(part2(*parse(sys.stdin)))
