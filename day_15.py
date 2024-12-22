@@ -1,9 +1,11 @@
-from typing import List, Literal, Tuple, Iterable
-import sys
 import enum
+import sys
 from bisect import bisect_right
-from sortedcontainers import SortedDict
+from dataclasses import dataclass
 from functools import total_ordering
+from typing import Iterable, List, Literal, Tuple, Optional
+
+from sortedcontainers import SortedDict
 
 
 @total_ordering
@@ -173,9 +175,9 @@ def pprint(
   return "\n".join(row_chars), "\n".join(transposed_cols)
 
 
-def part1(
-  grid: List[List[Space]], start: Tuple[int, int], actions: Iterable[Direction]
-):
+def make_rows_cols(
+  grid: List[List[Space]],
+) -> Tuple[List[TheOnlyUsefulType], List[TheOnlyUsefulType]]:
   rows: List[TheOnlyUsefulType] = []
   for i in range(len(grid)):
     sd: TheOnlyUsefulType = SortedDict()
@@ -201,6 +203,13 @@ def part1(
         item = (i, grid[i][j])
     sd[item[0]] = (item[1], len(grid))
     cols.append(sd)
+  return (rows, cols)
+
+
+def part1(
+  grid: List[List[Space]], start: Tuple[int, int], actions: Iterable[Direction]
+):
+  rows, cols = make_rows_cols(grid)
 
   pos = start
   for a in actions:
@@ -291,10 +300,65 @@ def push_row_of_boxes(sd: TheOnlyUsefulType, j: int, direction: Literal[-1, 1]):
     sd[expand_item[0]] = (expand_item[1][0], start + 1)
 
 
-def compute_vertical_moves(
+@dataclass(frozen=False)
+class MovingBox:
+  coords: Tuple[int, int]
+
+
+def vertical_obstacles(
   rows: List[TheOnlyUsefulType], box: Tuple[int, int], direction: Literal[-1, 1]
+) -> Optional[List[MovingBox]]:
+  row, col = box
+  if 0 <= (row + direction) < len(rows):
+    next_row = rows[row + direction]
+    items = next_row.items()
+    start, (space, finish) = items[bisect_right(items, gen_max(col)) - 1]
+    assert start <= col < finish
+    if finish == start + 1:
+      space2 = rows[row + direction][start + 1][0]
+    else:
+      space2 = space
+    match (space, space2):
+      case (Space.WALL, _) | (_, Space.WALL):
+        return None
+      case (Space.FREE, Space.FREE):
+        return []
+      case (Space.FREE, Space.BOX):
+        return [(row + direction, col + 1)]
+      case (Space.BOX, Space.FREE):
+        return [(row + direction, col - 1)]
+      case (Space.BOX, Space.BOX):
+        if (col - start) % 2 == 0:
+          return [((row + direction), col)]
+        else:
+          return [
+            ((row + direction), col - 1),
+            ((row + direction), col + 1),
+          ]
+      case _:
+        assert False
+  assert False
+
+
+def compute_vertical_moves(
+  rows: List[TheOnlyUsefulType],
+  original_box: Tuple[int, int],
+  direction: Literal[-1, 1],
 ) -> List[Tuple[int, int]]:
-  pass
+  ans = []
+  ans.append(original_box)
+  finished = 0
+  while finished < len(ans):
+    box = ans[finished]
+    obstacles = vertical_obstacles(rows, box, direction)
+    if obstacles is None:
+      return []
+    else:
+      for obs in obstacles:
+        if obs != ans[-1]:
+          ans.append(obs)
+    finished += 1
+  return ans
 
 
 def part2():
