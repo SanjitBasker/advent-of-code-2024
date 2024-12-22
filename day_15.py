@@ -1,7 +1,7 @@
-from typing import List, Tuple, Iterable
+from typing import List, Literal, Tuple, Iterable
 import sys
 import enum
-from bisect import bisect_left, bisect_right
+from bisect import bisect_right
 from sortedcontainers import SortedDict
 from functools import total_ordering
 
@@ -17,6 +17,9 @@ class Space(enum.Enum):
     if self.__class__ is other.__class__:
       return self.value < other.value
     return NotImplemented
+
+
+TheOnlyUsefulType = SortedDict[int, Tuple[Space, int]]
 
 
 @total_ordering
@@ -58,24 +61,12 @@ def parse(lines):
   return grid, start, actions
 
 
-def find(
-  sd, i, d
-) -> Tuple[
-  Tuple[int, Tuple[int, Space]],
-  Tuple[int, Tuple[int, Space]],
-]:
-  items = sd.items()
-  j = bisect_left(items, (i, (i, min(list(Space)))))
-  assert items[j][0] <= i < items[j][1][1]
-  return items[j], items[j + d]
-
-
 def gen_max(y: int):
   return (y, (max(list(Space)), float("inf")))
 
 
 def replace(
-  sd: SortedDict[int, Tuple[Space, int]],
+  sd: TheOnlyUsefulType,
   i: int,
   s: Space,
   expected: Space | None = None,
@@ -128,45 +119,35 @@ def replace(
   )
 
   if left_merge and right_merge:
-    print(f"merging both, {prev_item=} {next_item=}")
     prev_start = prev_item[0]
     next_fin = next_item[1][1]
     sd[prev_start] = (s, next_fin)
     del sd[start]
     del sd[start + 1]
   elif left_merge:
-    print("merging left")
     prev_start = prev_item[0]
     sd[prev_start] = (s, i + 1)
     if i + 1 < finish:
       sd[i + 1] = sd[i]
     del sd[i]
   elif right_merge:
-    print("merging right")
     next_fin = next_item[1][1]
     if start < i:
       sd[start] = (present, i)
     sd[i] = (s, next_fin)
     del sd[i + 1]
   elif start == i and i + 1 == finish:
-    print("size=1")
     sd[start] = (s, finish)
   elif start == i:
-    print("at start")
     sd[start + 1] = items[j][1]
     sd[start] = (s, start + 1)
   elif i + 1 == finish:
-    print("at end")
     sd[start] = (present, i)
     sd[i] = (s, finish)
   else:
-    print("in middle")
     sd[start] = (present, i)
     sd[i] = (s, i + 1)
     sd[i + 1] = (present, finish)
-
-
-def push(sd, start, finish): ...
 
 
 def move(u: Tuple[int, int], v: Tuple[int, int]) -> Tuple[int, int]:
@@ -174,10 +155,11 @@ def move(u: Tuple[int, int], v: Tuple[int, int]) -> Tuple[int, int]:
 
 
 def pprint(
-  rows: List[SortedDict[int, Tuple[Space, int]]],
-  cols: List[SortedDict[int, Tuple[Space, int]]],
+  rows: List[TheOnlyUsefulType],
+  cols: List[TheOnlyUsefulType],
+  wide: bool = False,
 ) -> Tuple[str, str]:
-  def collect(group: SortedDict[int, Tuple[Space, int]]) -> List[str]:
+  def collect(group: TheOnlyUsefulType) -> List[str]:
     ans: List[str] = []
     for item in group.items():
       ans.extend(item[1][0].value for _ in range(item[1][1] - item[0]))
@@ -186,15 +168,17 @@ def pprint(
   row_chars: Iterable[str] = ("".join(collect(row)) for row in rows)
   col_chars: Iterable[List[str]] = (collect(col) for col in cols)
   transposed_cols = ("".join(a) for a in zip(*list(col_chars)))
+  if wide:
+    row_chars = (row.replace("OO", "[]") for row in row_chars)
   return "\n".join(row_chars), "\n".join(transposed_cols)
 
 
 def part1(
   grid: List[List[Space]], start: Tuple[int, int], actions: Iterable[Direction]
 ):
-  rows: List[SortedDict[int, Tuple[Space, int]]] = []
+  rows: List[TheOnlyUsefulType] = []
   for i in range(len(grid)):
-    sd: SortedDict[int, Tuple[Space, int]] = SortedDict()
+    sd: TheOnlyUsefulType = SortedDict()
     item = None
     for j in range(len(grid[i])):
       if item is None:
@@ -205,9 +189,9 @@ def part1(
     sd[item[0]] = (item[1], len(grid[i]))
     rows.append(sd)
 
-  cols: List[SortedDict[int, Tuple[Space, int]]] = []
+  cols: List[TheOnlyUsefulType] = []
   for j in range(len(grid[0])):
-    sd: SortedDict[int, Tuple[Space, int]] = SortedDict()
+    sd: TheOnlyUsefulType = SortedDict()
     item = None
     for i in range(len(grid)):
       if item is None:
@@ -250,13 +234,10 @@ def part1(
             box_dest_coord = neighbor_item[1][1]
           elif sum(a.value) == -1:
             box_dest_coord = neighbor_item[0] - 1
-          replace(to_search, y + sum(a.value), Space.FREE, Space.BOX)
-          replace(to_search, box_dest_coord, Space.BOX, Space.FREE)
+          push_row_of_boxes(to_search, neighbor, sum(a.value))
           replace(to_replace[y + sum(a.value)], x, Space.FREE, Space.BOX)
           replace(to_replace[box_dest_coord], x, Space.BOX, Space.FREE)
           pos = move(pos, a.value)
-    else:
-      print("Stuck")
 
   ans = 0
   for i, row in enumerate(rows):
@@ -267,6 +248,53 @@ def part1(
           + (item[0] + item[1][1] - 1) * (item[1][1] - item[0]) // 2
         )
   return ans
+
+
+def push_row_of_boxes(sd: TheOnlyUsefulType, j: int, direction: Literal[-1, 1]):
+  """
+  Does what it says on the tin, i'm too lazy to ask gen AI to write a docstring
+  """
+  items = sd.items()
+  start, (present, finish) = items[j]
+  assert present == Space.BOX and 0 < j < len(items) - 1
+  squash_item = items[j + direction]
+  expand_item = items[j - direction]
+  assert squash_item[1][0] == Space.FREE
+  if direction == -1:
+    del sd[start]
+    del sd[squash_item[0]]
+    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
+      prior_item := items[j - 2]
+    )[1][0] == Space.BOX:
+      sd[prior_item[0]] = (present, finish - 1)
+    elif kill_squash:
+      sd[start - 1] = (Space.BOX, finish - 1)
+    else:
+      sd[squash_item[0]] = (Space.FREE, start - 1)
+      sd[start - 1] = (Space.BOX, finish - 1)
+    del sd[expand_item[0]]
+    sd[expand_item[0] - 1] = expand_item[1]
+  else:
+    del sd[start]
+    del sd[squash_item[0]]
+    if (kill_squash := squash_item[1][1] == squash_item[0] + 1) and (
+      following_item := items[j]
+    )[1][0] == Space.BOX:
+      # merge with following
+      sd[start + 1] = following_item[1]
+      del sd[following_item[0]]
+    elif kill_squash:
+      sd[start + 1] = (Space.BOX, finish + 1)
+    else:
+      sd[start + 1] = (Space.BOX, finish + 1)
+      sd[finish + 1] = squash_item[1]
+    sd[expand_item[0]] = (expand_item[1][0], start + 1)
+
+
+def compute_vertical_moves(
+  rows: List[TheOnlyUsefulType], box: Tuple[int, int], direction: Literal[-1, 1]
+) -> List[Tuple[int, int]]:
+  pass
 
 
 def part2():
