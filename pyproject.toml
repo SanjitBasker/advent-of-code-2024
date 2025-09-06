@@ -1,5 +1,12 @@
 [tool.ruff]
 indent-width = 2
+line-length = 80
+
+[tool.ruff.lint]
 select = ["E", "F", "Q", "I"]
 fixable = ["ALL"]
-line-length = 80
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
