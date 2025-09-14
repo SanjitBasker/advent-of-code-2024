@@ -10,3 +10,5 @@ fixable = ["ALL"]
 indent-style = "space"
 quote-style = "double"
 
+[tool.basedpyright]
+typeCheckingMode = "basic"
