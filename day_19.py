@@ -7,14 +7,14 @@ def parse(lines):
     return towels, [line.strip() for line in lines if line.strip()]
 
 
-class SmallList:
-    def __init__(self, max_concurrent, init):
-        self.storage = [init] * max_concurrent
+class SmallList[T]:
+    def __init__(self, max_concurrent, init: T):
+        self.storage: list[T] = [init] * max_concurrent
 
     def __setitem__(self, i, x):
         self.storage[i % len(self.storage)] = x
 
-    def __getitem__(self, i):
+    def __getitem__(self, i) -> T:
         return self.storage[i % len(self.storage)]
 
 
